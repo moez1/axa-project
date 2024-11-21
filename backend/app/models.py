@@ -3,7 +3,7 @@ from typing import Dict
 
 class TitanicPassenger(db.Model):
     """Model for Titanic passengers."""
-    
+
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(100), index=True)
     sex = db.Column(db.String(10), index=True)
