@@ -6,3 +6,4 @@ flasgger
 flask_cors
 pytest
 marshmallow==3.13.0
+setuptools==49.6.0

@@ -4,45 +4,74 @@ from app.models import TitanicPassenger
 from app.schemas import TitanicPassengerSchema
 from flasgger import swag_from
 from sqlalchemy.exc import OperationalError
+from werkzeug.utils import secure_filename
+import os
+import pandas as pd
 
 main = Blueprint('main', __name__)
 
+UPLOAD_FOLDER = 'uploads'
+if not os.path.exists(UPLOAD_FOLDER):
+    os.makedirs(UPLOAD_FOLDER)
+
 @main.route('/upload-csv/', methods=['POST'])
 @swag_from({
+    'consumes': ['multipart/form-data'],
+    'parameters': [
+        {
+            'name': 'file',
+            'in': 'formData',
+            'type': 'file',
+            'required': True,
+            'description': 'The CSV file to upload'
+        }
+    ],
     'responses': {
         201: {
             'description': 'CSV data uploaded successfully'
+        },
+        400: {
+            'description': 'Invalid file format'
         }
     }
 })
-def upload_csv() -> jsonify:
+def upload_csv():
     """
     Handle CSV file upload and store data in the database.
-
-    Returns:
-        Response: JSON response indicating success.
     """
-    # Logic to handle CSV upload
-    return jsonify({'message': 'CSV data uploaded successfully'}), 201
+    if 'file' not in request.files:
+        return jsonify({"error": "No file part"}), 400
+    file = request.files['file']
+    if file.filename == '':
+        return jsonify({"error": "No selected file"}), 400
+    if file and file.filename.endswith('.csv'):
+        filename = secure_filename(file.filename)
+        file_path = os.path.join(UPLOAD_FOLDER, filename)
+        file.save(file_path)
+        
+        # Process the CSV file and store data in the database
+        data = pd.read_csv(file_path)
+        for _, row in data.iterrows():
+            passenger = TitanicPassenger(name=row['Name'], sex=row['Sex'], age=row['Age'])
+            db.session.add(passenger)
+        db.session.commit()
+        
+        return jsonify({'message': 'CSV data uploaded successfully'}), 201
+    else:
+        return jsonify({"error": "Invalid file format"}), 400
 
 @main.route('/passengers/', methods=['GET'])
-def get_passengers() -> jsonify:
+def get_passengers():
     """
     Retrieve a list of all Titanic passengers.
-
-    Returns:
-        Response: JSON response containing a list of passengers.
     """
     passengers = TitanicPassenger.query.all()
     return jsonify([p.as_dict() for p in passengers])
 
 @main.route('/passengers/', methods=['POST'])
-def create_passenger() -> jsonify:
+def create_passenger():
     """
     Create a new Titanic passenger.
-
-    Returns:
-        Response: JSON response containing the created passenger.
     """
     data = request.get_json()
     schema = TitanicPassengerSchema()
@@ -55,15 +84,9 @@ def create_passenger() -> jsonify:
     return jsonify(passenger.as_dict()), 201
 
 @main.route('/passengers/<int:id>/', methods=['PUT'])
-def update_passenger(id: int) -> jsonify:
+def update_passenger(id):
     """
     Update an existing Titanic passenger.
-
-    Args:
-        id (int): The ID of the passenger to update.
-
-    Returns:
-        Response: JSON response containing the updated passenger.
     """
     data = request.get_json()
     schema = TitanicPassengerSchema()
@@ -80,15 +103,9 @@ def update_passenger(id: int) -> jsonify:
     return jsonify(passenger.as_dict())
 
 @main.route('/passengers/<int:id>/', methods=['DELETE'])
-def delete_passenger(id: int) -> str:
+def delete_passenger(id):
     """
     Delete a Titanic passenger.
-
-    Args:
-        id (int): The ID of the passenger to delete.
-
-    Returns:
-        Response: Empty response indicating success.
     """
     passenger = TitanicPassenger.query.get(id)
     if not passenger:
